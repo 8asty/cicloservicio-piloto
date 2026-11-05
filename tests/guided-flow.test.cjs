@@ -60,10 +60,17 @@ function setup({query='',stored={},clipboardFailure=false,storageFailure=false,f
   assert.equal(a.test.guideState.copied,false,'return to editor requires another copy');
   assert.equal(a.node('draft-text').value,'Mensaje editado');
   await a.node('copy-draft').fire('click');await a.node('guide-contact').fire('click');
-  assert.equal(a.writes,1);assert.equal(JSON.parse(a.saved)['1'],'contacted');
+  assert.equal(a.writes,1);assert.equal(JSON.parse(a.saved)['1'].status,'contacted');
+  const registeredAt=JSON.parse(a.saved)['1'].at;
+  assert(Number.isFinite(Date.parse(registeredAt)),'registration keeps an actual timestamp');
   assert(a.node('guide-complete').open);assert(a.test.guideState.registered);
   const persisted=setup({stored:JSON.parse(a.saved)});
   assert.equal(persisted.test.statusOf(persisted.test.data[0]),'contacted');
+  persisted.test.openClient(1);
+  assert(persisted.node('detail-management').innerHTML.includes('Simulación'));
+  assert(persisted.node('detail-management').innerHTML.includes('No registrada en esta demo'));
+  assert.equal(JSON.parse(persisted.saved)['1'].at,registeredAt,'reload does not replace registration date');
+  persisted.node('client-dialog').close();
   assert(!persisted.node('client-dialog').open,'plain URL stays free');
   const failed=setup({query:'?guia=1',clipboardFailure:true});
   await failed.node('draft-button').fire('click');await failed.node('copy-draft').fire('click');
@@ -91,10 +98,24 @@ function setup({query='',stored={},clipboardFailure=false,storageFailure=false,f
   free.node('draft-text').value='Conservar edición';await free.node('draft-text').fire('input');
   await free.node('return-client').fire('click');await free.node('draft-button').fire('click');
   assert.equal(free.node('draft-text').value,'Conservar edición');
-  await free.node('copy-draft').fire('click');assert.equal(free.node('copy-status').textContent,'Copiado.');
+  await free.node('copy-draft').fire('click');assert(free.node('copy-status').textContent.includes('No se envió ni se registró'));
+  assert.equal(free.writes,0,'copy alone never records commercial contact');
   assert(!free.test.guideState.prepared);
   await free.node('return-client').fire('click');await free.node('schedule-button').fire('click');
-  assert.equal(JSON.parse(free.saved)['1'],'scheduled');
+  assert.equal(JSON.parse(free.saved)['1'].status,'scheduled');
   await free.node('reset-demo').fire('click');assert.equal(free.saved,null);
+  const caseStudy=setup({query:'?guia=1'});
+  assert.equal(caseStudy.node('detail-title').textContent,'Oficinas Parque Norte');
+  assert(caseStudy.node('detail-note').textContent.includes('mantención terminó'));
+  assert(caseStudy.node('detail-management').innerHTML.includes('Sin asignar'));
+  await caseStudy.node('draft-button').fire('click');
+  assert(caseStudy.node('draft-text').value.includes('¿Cómo han funcionado los equipos'));
+  assert(!caseStudy.node('draft-text').value.includes('próxima visita'));
+  const legacy=setup({stored:{1:'contacted'}});legacy.test.openClient(1);
+  assert(legacy.node('detail-management').innerHTML.includes('Sin fecha registrada'),'legacy status does not invent registration date');
+  const invalid=setup({stored:{1:{status:'contacted',at:'bad date'},99:'contacted'}});
+  assert.equal(invalid.test.statusOf(invalid.test.data[0]),'pending');
+  for(const d of caseStudy.test.data){assert(d.lastService<0);assert(['Bimestral','Semestral'].includes(d.cycle));}
   console.log('PASS: guided actions, guards, actual copy result, failures, cancellation race, repeat, iframe isolation, edit preservation, free mode, persistence/reset');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
